@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Engine regression tests
+        run: pytest -q tests
+      - name: Notebook runs end to end
+        run: jupyter nbconvert --to notebook --execute notebooks/pangolin_gpu_planner.ipynb --output /tmp/executed.ipynb
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: data.js is valid JSON after the marker
+        run: python -c "import json;t=open('js/data.js').read();k=t.index('\nwindow.PLANNER_DATA =')+len('\nwindow.PLANNER_DATA =');json.loads(t[k:t.rindex(';')]);print('ok')"
+      - name: Manifest is valid JSON
+        run: python -c "import json;json.load(open('manifest.webmanifest'));print('ok')"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: JavaScript syntax check
+        run: node --check js/app.js && node --check sw.js && node --check js/data.js

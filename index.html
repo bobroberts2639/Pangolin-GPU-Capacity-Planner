@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pangolin GPU Planner – AI Inference Capacity &amp; Cost Sizing</title>
+<meta name="description" content="Size dedicated GPU capacity, servers, host RAM, power and rough cost for LLM inference workloads. Runs entirely in the browser.">
+<meta name="theme-color" content="#0f1419">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="GPU Planner">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header>
+  <img src="icons/favicon.svg" alt="" width="40" height="40" style="border-radius:9px">
+  <div>
+    <h1>Pangolin GPU Planner <span style="font-weight:400;color:var(--muted);font-size:15px">– AI Inference Capacity &amp; Cost Sizing</span></h1>
+    <p>Size dedicated GPU capacity for LLM inference: compare GPUs, save scenarios, build multi-workload plans and export reports.</p>
+  </div>
+  <span style="flex:1"></span>
+  <button class="ghost sm noprint" id="btnInstall" style="display:none" title="Install as an app (PWA)">Install app</button>
+</header>
+
+<main>
+  <!-- ======================= INPUTS ======================= -->
+  <section class="card" id="inputs">
+    <h2>Planning inputs</h2>
+    <p class="sub">The defaults match the planner spreadsheet. Fields marked <em>optional</em> refine the result.</p>
+    <div class="grid">
+      <div class="section-label">Model &amp; precision</div>
+      <div>
+        <label for="model">Model</label>
+        <select id="model"></select>
+        <div class="hint" id="modelHint"></div>
+      </div>
+      <div>
+        <label for="precision">Target precision</label>
+        <select id="precision">
+          <option value="FP16">FP16 / BFLOAT16</option>
+          <option value="FP8">FP8 / INT8</option>
+          <option value="FP4">FP4 (NVFP4 / MXFP4 / INT4)</option>
+          <option value="FP32">FP32</option>
+        </select>
+        <div class="hint" id="precHint"></div>
+      </div>
+      <div>
+        <label for="usecase">Application / purpose <span class="muted">(optional preset)</span></label>
+        <select id="usecase">
+          <option value="custom">Custom (set lengths below)</option>
+          <option value="chat" data-in="1024" data-out="512">Chatbot / virtual assistant</option>
+          <option value="rag" data-in="4096" data-out="512">RAG / enterprise knowledge search</option>
+          <option value="code" data-in="2048" data-out="1024">Code assistant</option>
+          <option value="summ" data-in="8192" data-out="512">Document summarisation</option>
+          <option value="agent" data-in="8192" data-out="2048">Agentic / multi-step workflows</option>
+          <option value="content" data-in="512" data-out="2048">Content generation</option>
+          <option value="classify" data-in="1024" data-out="128">Classification / extraction</option>
+        </select>
+        <div class="hint">Picking a preset fills in the sequence lengths.</div>
+      </div>
+      <div class="override" id="overrideBox">
+        <div style="grid-column:1/-1;font-size:13px" class="muted" id="ovMsg"></div>
+        <div><label for="ovTotal">Total parameters (B)</label><input type="number" id="ovTotal" min="0.1" step="0.1"></div>
+        <div><label for="ovActive">Active parameters / token (B)</label><input type="number" id="ovActive" min="0.1" step="0.1"></div>
+        <div><label for="ovKv">KV cache per token @FP16 (KiB)</label><input type="number" id="ovKv" min="0" step="1"></div>
+        <div><label for="ovState">Fixed state per user (MB)</label><input type="number" id="ovState" min="0" step="1"></div>
+      </div>
+
+      <div class="section-label">Workload</div>
+      <div>
+        <label for="isl">Input sequence length (tokens)</label>
+        <select id="isl"></select>
+        <div class="hint">Range 0–8192 · default 1024</div>
+      </div>
+      <div>
+        <label for="osl">Output sequence length (tokens)</label>
+        <select id="osl"></select>
+        <div class="hint">Range 0–8192 · default 1024</div>
+      </div>
+      <div>
+        <label for="users">Concurrent users (batch size)</label>
+        <select id="users"></select>
+        <div class="hint">Range 1–100,000 · default 100</div>
+      </div>
+      <div>
+        <label for="tps">Target output speed per user <span class="muted">(optional)</span></label>
+        <select id="tps">
+          <option value="0">Memory-only sizing (no speed target)</option>
+          <option value="10">10 tokens/s (batch / background)</option>
+          <option value="20" selected>20 tokens/s (comfortable reading speed)</option>
+          <option value="30">30 tokens/s (responsive chat)</option>
+          <option value="50">50 tokens/s (fast / interactive coding)</option>
+          <option value="100">100 tokens/s (premium low-latency)</option>
+        </select>
+        <div class="hint">Adds GPUs where memory bandwidth or compute limits the speed.</div>
+      </div>
+      <div>
+        <label for="peak">Peak load factor <span class="muted">(optional)</span></label>
+        <select id="peak">
+          <option value="1">1.0× – size for the users entered</option>
+          <option value="1.25">1.25× – moderate peaks</option>
+          <option value="1.5">1.5× – busy-hour peaks</option>
+          <option value="2">2.0× – spiky / launch traffic</option>
+          <option value="3">3.0× – extreme peaks</option>
+        </select>
+        <div class="hint">Multiplies concurrent users to cover peak demand.</div>
+      </div>
+
+      <div class="section-label">Infrastructure</div>
+      <div>
+        <label for="gpu">GPU</label>
+        <select id="gpu"></select>
+        <div class="hint" id="gpuHint"></div>
+      </div>
+      <div>
+        <label for="util">Max GPU memory utilisation (%)</label>
+        <select id="util"></select>
+        <div class="hint">Range 0–100 · default 100 (90% is a safer planning value)</div>
+      </div>
+      <div>
+        <label for="gps">GPUs per server</label>
+        <select id="gps"></select>
+        <div class="hint" id="gpsHint">Range 0–1024 · default 2</div>
+      </div>
+      <div>
+        <label for="redund">Redundancy / high availability <span class="muted">(optional)</span></label>
+        <select id="redund">
+          <option value="none">None (N)</option>
+          <option value="n1">N+1 – one spare server</option>
+          <option value="n2">N+2 – two spare servers</option>
+          <option value="p10">+10% spare capacity</option>
+          <option value="p20">+20% spare capacity</option>
+          <option value="2n">2N – fully duplicated (active/active)</option>
+        </select>
+        <div class="hint">Spare GPUs are added on top of the sized capacity.</div>
+      </div>
+      <div>
+        <label for="rankBy">Rank GPU options by</label>
+        <select id="rankBy">
+          <option value="servers">Fewest servers (then power)</option>
+          <option value="power">Lowest facility power</option>
+          <option value="cost">Lowest estimated cost (rough)</option>
+          <option value="gpus">Fewest GPUs</option>
+        </select>
+        <div class="hint">Decides which GPU is recommended.</div>
+      </div>
+
+      <details class="box" id="costBox">
+        <summary>Cost assumptions (rough estimate only: click to edit)</summary>
+        <div class="inner">
+          <div style="grid-column:1/-1" class="caveat"><b class="t">CAVEAT EMPTOR.</b> GPU and server prices move quickly and depend on supplier, volume, contract, region, configuration and availability. All cost figures are <b>indicative ranges for early budgeting only</b> and may be wrong by ±30–50% or more. Always get vendor quotes.</div>
+          <div><label for="cKwh">Electricity price ($/kWh)</label><input type="number" id="cKwh" min="0" step="0.01" value="0.12"></div>
+          <div><label for="cYears">Ownership period (years)</label><select id="cYears"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div>
+          <div><label for="cUtil">Average utilisation (%)</label><select id="cUtil"><option>25</option><option>40</option><option selected>50</option><option>60</option><option>75</option><option>90</option></select></div>
+          <div><label for="cPlo">Selected GPU price – low ($)</label><input type="number" id="cPlo" min="0" step="500"></div>
+          <div><label for="cPhi">Selected GPU price – high ($)</label><input type="number" id="cPhi" min="0" step="500"></div>
+          <div><label for="cMaint">Support &amp; maintenance (% of hardware / yr)</label><input type="number" id="cMaint" min="0" step="1" value="10"></div>
+        </div>
+      </details>
+
+      <details class="box">
+        <summary>Report branding (optional: appears on printed / PDF and Excel reports)</summary>
+        <div class="inner">
+          <div><label for="bCompany">Company / organisation</label><input type="text" id="bCompany" placeholder="e.g. Pangolin Data Centres"></div>
+          <div><label for="bProject">Project</label><input type="text" id="bProject" placeholder="e.g. Phase 1 inference cluster"></div>
+          <div><label for="bAuthor">Prepared by</label><input type="text" id="bAuthor" placeholder="Name"></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="btnGen">Generate report</button>
+      <button class="ghost" id="btnReset">Reset to defaults</button>
+      <span style="flex:1"></span>
+      <input type="text" id="scName" placeholder="Scenario name (optional)" style="max-width:240px">
+      <button class="ghost" id="btnSave">Save as scenario</button>
+    </div>
+  </section>
+
+  <!-- ======================= SCENARIOS ======================= -->
+  <section class="card" id="scenarios">
+    <h2>Saved scenarios</h2>
+    <p class="sub">Save several configurations. Then compare them side by side, or combine them into one multi-workload deployment plan. Scenarios are kept in this browser. Use Export/Import to move or back them up.</p>
+    <div class="scroll"><table id="scTable"></table></div>
+    <div class="actions">
+      <button class="primary" id="btnCompare">Compare selected</button>
+      <button class="primary" id="btnPlan">Build plan from selected</button>
+      <button class="danger" id="btnDel">Delete selected</button>
+      <span style="flex:1"></span>
+      <button class="ghost sm" id="btnExpJson">Export scenarios (.json)</button>
+      <label class="ghost sm" style="margin:0;padding:7px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">Import (.json)<input type="file" id="impJson" accept=".json,application/json" style="display:none"></label>
+    </div>
+  </section>
+
+  <section id="multi"></section>
+  <section id="report"></section>
+</main>
+
+<div id="toast"></div>
+<footer><b>Pangolin GPU Planner</b> v2.0.0 · <a href="https://github.com/bobroberts2639/Pangolin-GPU-Capacity-Planner" style="color:var(--accent2)">Source on GitHub</a> · These are planning estimates. Check them against vendor benchmarks, quotes and a pilot deployment before you buy hardware. Data last reviewed: November 2026.</footer>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+# Python engine + notebook + tests (the web app itself needs nothing)
+pandas>=2.0
+matplotlib>=3.7
+openpyxl>=3.1
+jupyter>=1.0
+nbconvert>=7.0
+pytest>=7.0
